@@ -36,10 +36,6 @@ A comprehensive Flutter application for Oriental Leafhopper Trap mapping and man
 - Responsive bottom navigation
 - Professional color schemes
 
-## 📸 **Screenshots**
-
-*(Add screenshots of the app in action)*
-
 ## 🛠️ **Technical Stack**
 
 - **Framework**: Flutter 3.x
