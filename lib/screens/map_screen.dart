@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 import '../models/oltrap.dart';
 import '../services/database_helper.dart';
 import 'location_selection_screen.dart';
@@ -28,6 +29,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   OLTrap? _selectedTrap;
   OLTrapStatus? _filterStatus;
   String? _filterLocation;
+  String? _filterNotes;
   final TextEditingController _searchController = TextEditingController();
   List<OLTrap> _searchResults = [];
   bool _isSearching = false;
@@ -36,11 +38,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   
   late AnimationController _glowAnimationController;
   late Animation<double> _glowAnimation;
+  
+  // Location tracking
+  StreamSubscription<Position>? _locationSubscription;
+  Timer? _locationUpdateTimer;
+  double? _currentAccuracy;
 
   @override
   void initState() {
     super.initState();
     _getCurrentLocation();
+    _startLocationTracking();
     
     // Initialize glow animation
     _glowAnimationController = AnimationController(
@@ -105,6 +113,37 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  void _startLocationTracking() {
+    // Start location stream for real-time updates like Google Maps
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 5, // Update every 5 meters for smoother tracking
+      ),
+    ).listen((Position position) {
+      if (mounted) {
+        final newLocation = LatLng(position.latitude, position.longitude);
+        setState(() {
+          _currentLocation = newLocation;
+          _currentAccuracy = position.accuracy;
+        });
+        
+        // Auto-center on location updates
+        _mapController.move(newLocation, 16.0);
+      }
+    });
+
+    // Also set up periodic updates as backup for better reliability
+    _locationUpdateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _getCurrentLocation();
+    });
+  }
+
+  void _stopLocationTracking() {
+    _locationSubscription?.cancel();
+    _locationUpdateTimer?.cancel();
+  }
+
   Future<void> _refreshOLTraps() async {
     setState(() {
       _isRefreshing = true;
@@ -137,7 +176,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   void _centerOnCurrentLocation() {
     if (_currentLocation != null) {
-      _mapController.move(_currentLocation!, 14.0); // Reduced from 15.0
+      _mapController.move(_currentLocation!, 22.0); // Maximum zoom level
     } else {
       _getCurrentLocation();
     }
@@ -266,8 +305,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ? Icons.bug_report 
                           : Icons.inventory_2,
                       color: trap.status == OLTrapStatus.deployed 
-                          ? Colors.red.shade700 
-                          : Colors.orange.shade700,
+                          ? Colors.red.withOpacity(0.7) 
+                          : Colors.orange.withOpacity(0.7),
                       size: 20,
                     ),
                   ),
@@ -387,7 +426,25 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 ),
                 MarkerLayer(
                   markers: [
-                    if (_currentLocation != null)
+                    if (_currentLocation != null) ...[
+                      // Accuracy circle
+                      if (_currentAccuracy != null)
+                        Marker(
+                          point: _currentLocation!,
+                          width: _currentAccuracy! * 2, // Diameter in meters (approximate)
+                          height: _currentAccuracy! * 2,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.blue.withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Current location marker
                       Marker(
                         point: _currentLocation!,
                         width: 40,
@@ -396,7 +453,14 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           decoration: BoxDecoration(
                             color: Colors.blue.withOpacity(0.8),
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(color: Colors.white, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.blue.withOpacity(0.3),
+                                blurRadius: 8,
+                                spreadRadius: 2,
+                              ),
+                            ],
                           ),
                           child: const Icon(
                             Icons.my_location,
@@ -405,12 +469,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+                    ],
                     ...widget.oltraps.where((trap) {
                       // Apply status filter
                       if (_filterStatus != null && trap.status != _filterStatus) return false;
                       
                       // Apply location filter
                       if (_filterLocation != null && trap.locationName != _filterLocation) return false;
+                      
+                      // Apply notes filter
+                      if (_filterNotes != null && trap.notes != _filterNotes) return false;
                       
                       return true;
                     }).map(
@@ -466,9 +534,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                             ? Colors.purple.withOpacity(0.9)
                                             : isSearchResult
                                                 ? Colors.blue.withOpacity(0.9)
-                                                : trap.status == OLTrapStatus.deployed 
-                                                    ? Colors.red.withOpacity(0.8) 
-                                                    : Colors.orange.withOpacity(0.8),
+                                                : (trap.notes == 'Missing' || trap.notes == 'Damaged')
+                                                    ? Colors.red.withOpacity(0.9)
+                                                    : trap.status == OLTrapStatus.deployed 
+                                                        ? Colors.red.withOpacity(0.8) 
+                                                        : Colors.orange.withOpacity(0.8),
                                     boxShadow: isSelected || isSearchedTrap
                                         ? [
                                             BoxShadow(
@@ -648,7 +718,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 children: [
                                   Icon(
                                     _searchResults.length == 1 ? Icons.touch_app : Icons.list,
-                                    color: Colors.blue.shade700,
+                                    color: Colors.blue.withOpacity(0.7),
                                     size: 16,
                                   ),
                                   const SizedBox(width: 6),
@@ -658,7 +728,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                           ? 'Found 1 trap - Tap to view details'
                                           : 'Found ${_searchResults.length} traps - Tap to select',
                                       style: TextStyle(
-                                        color: Colors.blue.shade700,
+                                        color: Colors.blue.withOpacity(0.7),
                                         fontSize: 12,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -666,7 +736,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   ),
                                   Icon(
                                     Icons.arrow_forward_ios,
-                                    color: Colors.blue.shade700,
+                                    color: Colors.blue.withOpacity(0.7),
                                     size: 12,
                                   ),
                                 ],
@@ -716,7 +786,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                           'Active',
                                           style: TextStyle(
                                             fontSize: 10,
-                                            color: Colors.green.shade700,
+                                            color: Colors.green.withOpacity(0.7),
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -834,6 +904,68 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         ),
                                       ],
                                     ),
+                                    const SizedBox(height: 16),
+                                    // Notes filter
+                                    Row(
+                                      children: [
+                                        Icon(Icons.note, color: Colors.grey.shade600, size: 16),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Notes:',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey.withOpacity(0.7),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        children: [
+                                          FilterChip(
+                                            label: const Text('All', style: TextStyle(fontSize: 11)),
+                                            selected: _filterNotes == null,
+                                            onSelected: (selected) {
+                                              setState(() {
+                                                _filterNotes = null;
+                                              });
+                                            },
+                                            backgroundColor: Colors.white,
+                                            selectedColor: Colors.green.shade100,
+                                            checkmarkColor: Colors.green,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          FilterChip(
+                                            label: const Text('Missing', style: TextStyle(fontSize: 11)),
+                                            selected: _filterNotes == 'Missing',
+                                            onSelected: (selected) {
+                                              setState(() {
+                                                _filterNotes = selected ? 'Missing' : null;
+                                              });
+                                            },
+                                            backgroundColor: Colors.white,
+                                            selectedColor: Colors.red.shade100,
+                                            checkmarkColor: Colors.red,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          FilterChip(
+                                            label: const Text('Damaged', style: TextStyle(fontSize: 11)),
+                                            selected: _filterNotes == 'Damaged',
+                                            onSelected: (selected) {
+                                              setState(() {
+                                                _filterNotes = selected ? 'Damaged' : null;
+                                              });
+                                            },
+                                            backgroundColor: Colors.white,
+                                            selectedColor: Colors.red.shade100,
+                                            checkmarkColor: Colors.red,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -848,6 +980,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: "qr_scanner",
         onPressed: () {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -974,8 +1107,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                           ? Icons.location_on 
                                           : Icons.location_on,
                                       color: _selectedTrap!.status == OLTrapStatus.deployed 
-                                          ? Colors.red.shade700 
-                                          : Colors.orange.shade700,
+                                          ? Colors.red.withOpacity(0.7) 
+                                          : Colors.orange.withOpacity(0.7),
                                       size: 12, // Smaller icon
                                     ),
                                     const SizedBox(width: 3), // Smaller spacing
@@ -985,8 +1118,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                         fontSize: 11, // Smaller font to match text
                                         fontWeight: FontWeight.w600,
                                         color: _selectedTrap!.status == OLTrapStatus.deployed 
-                                            ? Colors.red.shade700 
-                                            : Colors.orange.shade700,
+                                            ? Colors.red.withOpacity(0.7) 
+                                            : Colors.orange.withOpacity(0.7),
                                       ),
                                     ),
                                   ],
@@ -1000,7 +1133,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
-                                color: Colors.grey.shade700,
+                                color: Colors.grey.withOpacity(0.7),
                               ),
                             ),
                         ],
@@ -1036,7 +1169,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
+                                  color: Colors.grey.withOpacity(0.7),
                                 ),
                               ),
                             ],
@@ -1078,7 +1211,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.blue.shade700,
+                                  color: Colors.blue.withOpacity(0.7),
                                 ),
                               ),
                             ],
@@ -1088,7 +1221,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             _formatDate(_selectedTrap!.timestamp),
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.blue.shade700,
+                              color: Colors.blue.withOpacity(0.7),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1126,7 +1259,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.purple.shade700,
+                                  color: Colors.purple.withOpacity(0.7),
                                 ),
                               ),
                             ],
@@ -1136,7 +1269,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                             '${_selectedTrap!.location.latitude.toStringAsFixed(4)}, ${_selectedTrap!.location.longitude.toStringAsFixed(4)}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.purple.shade700,
+                              color: Colors.purple.withOpacity(0.7),
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1168,7 +1301,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade700,
+                                    color: Colors.grey.withOpacity(0.7),
                                   ),
                                 ),
                               ],
@@ -1178,7 +1311,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               _selectedTrap!.notes!,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.grey.shade700,
+                                color: Colors.grey.withOpacity(0.7),
                               ),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -1271,6 +1404,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _stopLocationTracking();
     _searchController.dispose();
     _glowAnimationController.dispose();
     super.dispose();

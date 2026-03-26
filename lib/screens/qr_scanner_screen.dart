@@ -25,6 +25,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   List<OLTrap> _scannedOLTraps = [];
   bool _showList = false;
   OLTrapStatus _selectedStatus = OLTrapStatus.deployed;
+  String _selectedNotes = 'Scanned from QR Code'; // Default value
 
   @override
   void initState() {
@@ -131,11 +132,33 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       throw Exception('Location permissions are permanently denied');
     }
 
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    
-    return LatLng(position.latitude, position.longitude);
+    try {
+      // Try multiple times to get the most accurate location
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 15),
+        forceAndroidLocationManager: false,
+      );
+
+      // If accuracy is not good enough, try again with higher accuracy
+      if (position.accuracy > 20) {
+        // Wait a bit and try again for better accuracy
+        await Future.delayed(const Duration(milliseconds: 500));
+        try {
+          position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.bestForNavigation,
+            timeLimit: const Duration(seconds: 10),
+          );
+        } catch (e) {
+          // If second attempt fails, use the first result
+          print('Second location attempt failed: $e');
+        }
+      }
+      
+      return LatLng(position.latitude, position.longitude);
+    } catch (e) {
+      throw Exception('Failed to get accurate location: $e');
+    }
   }
 
   void _onBarcodeCapture(BarcodeCapture capture) {
@@ -174,7 +197,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         qrCodeData: qrData,
         location: currentLocation,
         timestamp: DateTime.now(),
-        notes: 'Scanned from lawanit QR code',
+        notes: _selectedNotes == 'Scanned from QR Code' ? null : _selectedNotes,
         locationName: widget.locationName,
         status: _selectedStatus,
       );
@@ -303,6 +326,34 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
                       );
                     }).toList(),
                   ),
+                ),
+              ],
+            ),
+          ),
+          // Notes Input
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.green.shade50,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Scan Area Notes:',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildNotesButton('Scanned from QR Code', _selectedNotes == 'Scanned from QR Code'),
+                    _buildNotesButton('Missing', _selectedNotes == 'Missing'),
+                    _buildNotesButton('Damaged', _selectedNotes == 'Damaged'),
+                  ],
                 ),
               ],
             ),
@@ -745,6 +796,35 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     ];
     
     return '${months[dateTime.month - 1]} ${dateTime.day}, ${dateTime.year}';
+  }
+
+  Widget _buildNotesButton(String text, bool isSelected) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedNotes = text;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.green : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? Colors.green : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
   }
 
   @override

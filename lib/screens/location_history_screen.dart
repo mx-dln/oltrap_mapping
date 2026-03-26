@@ -261,6 +261,34 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 12),
+                            // Harvested details row
+                            if (oltraps.any((t) => t.status == OLTrapStatus.harvested))
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildStatCard(
+                                      icon: Icons.help_outline,
+                                      label: 'Missing',
+                                      value:
+                                          '${oltraps.where((t) => t.status == OLTrapStatus.harvested && t.isMissing).length}',
+                                      color: Colors.red.shade600,
+                                      backgroundColor: Colors.red.shade50,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildStatCard(
+                                      icon: Icons.warning,
+                                      label: 'Damaged',
+                                      value:
+                                          '${oltraps.where((t) => t.status == OLTrapStatus.harvested && t.isDamaged).length}',
+                                      color: Colors.brown.shade600,
+                                      backgroundColor: Colors.brown.shade50,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             const SizedBox(height: 20),
                             // Recent OLTraps section
                             Text(
@@ -495,6 +523,37 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                     ),
                   ],
                 ),
+                if (widget.oltraps.any((t) => t.status == OLTrapStatus.harvested))
+                  Column(
+                    children: [
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildDetailStatCard(
+                              icon: Icons.help_outline,
+                              label: 'Missing',
+                              value:
+                                  '${widget.oltraps.where((t) => t.status == OLTrapStatus.harvested && t.isMissing).length}',
+                              color: Colors.red.shade600,
+                              backgroundColor: Colors.red.shade50,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildDetailStatCard(
+                              icon: Icons.warning,
+                              label: 'Damaged',
+                              value:
+                                  '${widget.oltraps.where((t) => t.status == OLTrapStatus.harvested && t.isDamaged).length}',
+                              color: Colors.brown.shade600,
+                              backgroundColor: Colors.brown.shade50,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -664,6 +723,65 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                                 label: 'Notes',
                                 value: oltrap.notes!,
                                 iconColor: Colors.grey.shade600,
+                              ),
+                            ),
+                          if (oltrap.status == OLTrapStatus.harvested)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  if (oltrap.isMissing)
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.red.shade200),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.help_outline, color: Colors.red.shade600, size: 16),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Missing',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.red.shade700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  if (oltrap.isMissing && oltrap.isDamaged) const SizedBox(width: 8),
+                                  if (oltrap.isDamaged)
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.brown.shade50,
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.brown.shade200),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.warning, color: Colors.brown.shade600, size: 16),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Damaged',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.brown.shade700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                         ],

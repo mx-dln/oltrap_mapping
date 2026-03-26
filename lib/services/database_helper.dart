@@ -28,7 +28,7 @@ class DatabaseHelper {
     
     return await openDatabase(
       path,
-      version: 2, // Increment version for migration
+      version: 3, // Increment version for migration (add isMissing/isDamaged)
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -45,6 +45,8 @@ class DatabaseHelper {
         notes TEXT,
         location_name TEXT,
         status TEXT NOT NULL DEFAULT 'deployed',
+        isMissing INTEGER NOT NULL DEFAULT 0,
+        isDamaged INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -54,6 +56,11 @@ class DatabaseHelper {
     if (oldVersion < 2) {
       // Add status column to existing table
       await db.execute('ALTER TABLE oltraps ADD COLUMN status TEXT NOT NULL DEFAULT \'deployed\'');
+    }
+    if (oldVersion < 3) {
+      // Add isMissing and isDamaged columns for version 3
+      await db.execute('ALTER TABLE oltraps ADD COLUMN isMissing INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE oltraps ADD COLUMN isDamaged INTEGER NOT NULL DEFAULT 0');
     }
   }
   
@@ -70,6 +77,8 @@ class DatabaseHelper {
         'notes': oltrap.notes,
         'location_name': oltrap.locationName,
         'status': oltrap.status.toJson,
+        'isMissing': oltrap.isMissing ? 1 : 0,
+        'isDamaged': oltrap.isDamaged ? 1 : 0,
         'created_at': DateTime.now().millisecondsSinceEpoch,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -94,6 +103,12 @@ class DatabaseHelper {
         status: maps[i].containsKey('status') 
             ? OLTrapStatusExtension.fromJson(maps[i]['status'])
             : OLTrapStatus.deployed,
+        isMissing: maps[i].containsKey('isMissing') 
+            ? (maps[i]['isMissing'] == 1)
+            : false,
+        isDamaged: maps[i].containsKey('isDamaged') 
+            ? (maps[i]['isDamaged'] == 1)
+            : false,
       );
     });
   }
@@ -118,6 +133,12 @@ class DatabaseHelper {
         status: maps[i].containsKey('status') 
             ? OLTrapStatusExtension.fromJson(maps[i]['status'])
             : OLTrapStatus.deployed,
+        isMissing: maps[i].containsKey('isMissing') 
+            ? (maps[i]['isMissing'] == 1)
+            : false,
+        isDamaged: maps[i].containsKey('isDamaged') 
+            ? (maps[i]['isDamaged'] == 1)
+            : false,
       );
     });
   }
@@ -176,6 +197,28 @@ class DatabaseHelper {
   Future<void> clearAllOLTraps() async {
     final db = await database;
     await db.delete('oltraps');
+  }
+  
+  Future<void> mergeOLTraps(List<OLTrap> newTraps) async {
+    final db = await database;
+    final batch = db.batch();
+    
+    for (final trap in newTraps) {
+      // Check if trap already exists by QR code
+      final existingMaps = await db.query(
+        'oltraps',
+        where: 'qr_code_data = ?',
+        whereArgs: [trap.qrCodeData],
+        limit: 1,
+      );
+      
+      if (existingMaps.isEmpty) {
+        // Insert new trap
+        batch.insert('oltraps', trap.toMap());
+      }
+    }
+    
+    await batch.commit(noResult: true);
   }
   
   Future<void> close() async {

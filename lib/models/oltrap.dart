@@ -44,6 +44,8 @@ class OLTrap {
   final String? notes;
   final String? locationName;
   final OLTrapStatus status;
+  final bool isMissing;
+  final bool isDamaged;
 
   OLTrap({
     required this.id,
@@ -53,6 +55,8 @@ class OLTrap {
     this.notes,
     this.locationName,
     this.status = OLTrapStatus.deployed,
+    this.isMissing = false,
+    this.isDamaged = false,
   });
 
   Map<String, dynamic> toJson() {
@@ -67,24 +71,65 @@ class OLTrap {
       'notes': notes,
       'locationName': locationName,
       'status': status.toJson,
+      'isMissing': isMissing,
+      'isDamaged': isDamaged,
     };
+  }
+
+  static DateTime _parseTimestamp(dynamic timestamp) {
+    if (timestamp == null) return DateTime.now();
+    
+    if (timestamp is String) {
+      try {
+        return DateTime.parse(timestamp);
+      } catch (e) {
+        // If string parsing fails, try parsing as int
+        final intValue = int.tryParse(timestamp) ?? 0;
+        return DateTime.fromMillisecondsSinceEpoch(intValue);
+      }
+    }
+    
+    if (timestamp is int) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    }
+    
+    if (timestamp is double) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp.toInt());
+    }
+    
+    // Fallback
+    return DateTime.now();
   }
 
   factory OLTrap.fromJson(Map<String, dynamic> json) {
     return OLTrap(
-      id: json['id'],
-      qrCodeData: json['qrCodeData'],
+      id: json['id'] ?? '',
+      qrCodeData: json['qr_code_data'] ?? '',
       location: LatLng(
-        json['location']['latitude'],
-        json['location']['longitude'],
+        json['latitude']?.toDouble() ?? 0.0,
+        json['longitude']?.toDouble() ?? 0.0,
       ),
-      timestamp: DateTime.parse(json['timestamp']),
+      timestamp: _parseTimestamp(json['timestamp']),
       notes: json['notes'],
-      locationName: json['locationName'],
+      locationName: json['location_name'],
       status: json.containsKey('status') 
           ? OLTrapStatusExtension.fromJson(json['status'])
           : OLTrapStatus.deployed,
+      isMissing: _parseBool(json['isMissing']),
+      isDamaged: _parseBool(json['isDamaged']),
     );
+  }
+
+  static bool _parseBool(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is String) {
+      return value.toLowerCase() == 'true';
+    }
+    if (value is int) {
+      return value == 1;
+    }
+    return false;
   }
 
   OLTrap copyWith({
@@ -95,6 +140,8 @@ class OLTrap {
     String? notes,
     String? locationName,
     OLTrapStatus? status,
+    bool? isMissing,
+    bool? isDamaged,
   }) {
     return OLTrap(
       id: id ?? this.id,
@@ -104,6 +151,8 @@ class OLTrap {
       notes: notes ?? this.notes,
       locationName: locationName ?? this.locationName,
       status: status ?? this.status,
+      isMissing: isMissing ?? this.isMissing,
+      isDamaged: isDamaged ?? this.isDamaged,
     );
   }
 
@@ -132,5 +181,21 @@ class OLTrap {
         timestamp.hashCode ^
         notes.hashCode ^
         status.hashCode;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'qr_code_data': qrCodeData,
+      'latitude': location.latitude,
+      'longitude': location.longitude,
+      'timestamp': timestamp.millisecondsSinceEpoch.toString(),
+      'notes': notes,
+      'location_name': locationName,
+      'status': status.toJson,
+      'isMissing': isMissing,
+      'isDamaged': isDamaged,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+    };
   }
 }
