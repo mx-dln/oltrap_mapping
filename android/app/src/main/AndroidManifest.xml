@@ -14,7 +14,7 @@
         android:minSdkVersion="30" />
     
     <application
-        android:label="OLTrap Locator"
+        android:label="OLTrap Locator V2"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

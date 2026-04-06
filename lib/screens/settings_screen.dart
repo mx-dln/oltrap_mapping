@@ -78,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       
       // Generate timestamped filename with version
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final version = '1.1.0'; // Match app version
+      final version = '2.0.0'; // Match app version
       final fileName = 'oltrap_database_v${version}_$timestamp.db';
       
       bool exportSuccessful = false;

@@ -17,7 +17,7 @@ class OLTrapMappingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'OLTrap Locator',
+      title: 'OLTrap Locator V2',
       theme: AppTheme.theme,
       home: const MainScreen(),
       debugShowCheckedModeBanner: true,
