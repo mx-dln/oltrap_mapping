@@ -2,9 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite/sqflite.dart';
 import '../services/supabase_database_helper.dart' as supabase_helper;
 import '../models/oltrap.dart';
@@ -20,296 +17,42 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
 
-  Future<void> _requestStoragePermissions() async {
-    try {
-      // Request storage permissions for Android
-      if (Platform.isAndroid) {
-        // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for public Downloads access
-        await Permission.storage.request();
-        await Permission.manageExternalStorage.request();
-        
-        // Check if permissions are granted
-        var storageStatus = await Permission.storage.status;
-        var manageStorageStatus = await Permission.manageExternalStorage.status;
-        
-        if (!storageStatus.isGranted && !manageStorageStatus.isGranted) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('⚠️ Storage permissions required for Downloads folder access'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      print('Error requesting storage permissions: $e');
-    }
-  }
-
   Future<void> _exportDatabase() async {
     try {
       setState(() => _isLoading = true);
       
-      // Request storage permissions first
-      await _requestStoragePermissions();
-      
-      // Get database path
-      final dbPath = path.join(await getDatabasesPath(), 'oltrap_database.db');
-      final dbFile = File(dbPath);
-      
-      // Check if database file exists
-      if (!await dbFile.exists()) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No database file found'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-      
       // Get all OLTraps to show count in message
       final allTraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
       
-      // Generate timestamped filename with version
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final version = '2.0.0'; // Match app version
-      final fileName = 'oltrap_database_v${version}_$timestamp.db';
-      
-      bool exportSuccessful = false;
-      String? exportPath;
-      String exportMethod = '';
-      
-      // Method 1: Try public Downloads directory using Environment
-      try {
-        if (Platform.isAndroid) {
-          // Try to access public Downloads directory directly
-          final downloadsPath = '/storage/emulated/0/Download';
-          final downloadsDir = Directory(downloadsPath);
-          
-          if (await downloadsDir.exists()) {
-            exportPath = path.join(downloadsPath, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
-            exportSuccessful = true;
-            exportMethod = 'Public Downloads folder';
-          }
-        }
-      } catch (e) {
-        print('Public Downloads directory failed: $e');
-      }
-      
-      // Method 2: Try getDownloadsDirectory() as fallback
-      if (!exportSuccessful) {
-        try {
-          final downloadsDir = await getDownloadsDirectory();
-          if (downloadsDir != null && !downloadsDir.path.contains('Android/data')) {
-            exportPath = path.join(downloadsDir.path, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
-            exportSuccessful = true;
-            exportMethod = 'Downloads folder';
-          }
-        } catch (e) {
-          print('Downloads directory failed: $e');
-        }
-      }
-      
-      // Method 3: Try using external storage Downloads (Android 9 and below)
-      if (!exportSuccessful) {
-        try {
-          final externalDir = await getExternalStorageDirectory();
-          if (externalDir != null) {
-            // Navigate to public Downloads from external storage path
-            final basePath = externalDir.path.split('Android')[0];
-            final downloadsPath = path.join(basePath, 'Download');
-            final downloadsDir = Directory(downloadsPath);
-            
-            if (await downloadsDir.exists()) {
-              exportPath = path.join(downloadsPath, fileName);
-              await _copyDatabaseToPath(dbFile, exportPath);
-              exportSuccessful = true;
-              exportMethod = 'External Downloads folder';
-            }
-          }
-        } catch (e) {
-          print('External Downloads directory failed: $e');
-        }
-      }
-      
-      // Method 4: Try directory picker (user choice)
-      if (!exportSuccessful) {
-        try {
-          String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
-            dialogTitle: 'Select folder to export OLTrap Database',
-          );
-          
-          if (selectedDirectory != null) {
-            exportPath = path.join(selectedDirectory, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
-            exportSuccessful = true;
-            exportMethod = 'Selected folder';
-          }
-        } catch (e) {
-          print('Directory picker failed: $e');
-        }
-      }
-      
-      // Method 5: Try using external storage OLTrap folder
-      if (!exportSuccessful) {
-        try {
-          final externalDir = await getExternalStorageDirectory();
-          if (externalDir != null) {
-            // Try to create a folder in external storage
-            final oltrapDir = Directory(path.join(externalDir.path, 'OLTrap'));
-            if (!await oltrapDir.exists()) {
-              await oltrapDir.create(recursive: true);
-            }
-            exportPath = path.join(oltrapDir.path, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
-            exportSuccessful = true;
-            exportMethod = 'OLTrap folder';
-          }
-        } catch (e) {
-          print('External storage failed: $e');
-        }
-      }
-      
-      // Method 6: Try app documents directory (last resort)
-      if (!exportSuccessful) {
-        try {
-          final appDir = await getApplicationDocumentsDirectory();
-          exportPath = path.join(appDir.path, fileName);
-          await _copyDatabaseToPath(dbFile, exportPath);
-          exportSuccessful = true;
-          exportMethod = 'App documents';
-        } catch (e) {
-          print('App documents directory failed: $e');
-        }
-      }
-      
-      // Method 7: Share the file directly if all else fails
-      if (!exportSuccessful) {
-        try {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File(path.join(tempDir.path, fileName));
-          await dbFile.copy(tempFile.path);
-          
-          await Share.shareXFiles(
-            [XFile(tempFile.path, name: fileName)],
-            subject: 'OLTrap Database Export',
-            text: 'Exported OLTrap database with ${allTraps.length} traps',
-          );
-          
-          exportSuccessful = true;
-          exportMethod = 'Share dialog';
-          exportPath = tempFile.path;
-        } catch (e) {
-          print('Share method failed: $e');
-        }
-      }
-      
       if (mounted) {
-        if (exportSuccessful && exportPath != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('✅ Database exported successfully!'),
-                  Text('📁 ${allTraps.length} traps saved'),
-                  Text('📍 Location: $exportMethod'),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 5),
-              action: exportMethod != 'Share dialog' ? SnackBarAction(
-                label: 'View',
-                textColor: Colors.white,
-                onPressed: () {
-                  _showExportLocation(exportPath!);
-                },
-              ) : null,
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('✅ OLTrap data is automatically synced to Supabase!'),
+                Text('� Total traps: ${allTraps.length}'),
+                Text('� Real-time sync enabled'),
+                Text('☁️ Cloud database active'),
+              ],
             ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Export failed: Unable to access storage on this device'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error exporting database: $e'),
+            content: Text('❌ Error accessing Supabase: $e'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  Future<void> _copyDatabaseToPath(File sourceFile, String targetPath) async {
-    final targetFile = File(targetPath);
-    
-    // Ensure directory exists
-    final directory = targetFile.parent;
-    if (!await directory.exists()) {
-      await directory.create(recursive: true);
-    }
-    
-    // Copy file
-    await sourceFile.copy(targetPath);
-  }
-
-  Future<void> _showExportLocation(String filePath) async {
-    try {
-      // On Android, this might not work consistently, but we try
-      if (Platform.isAndroid) {
-        // Show a dialog with file path
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Export Location'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Database exported to:'),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    filePath,
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Failed to show export location: $e');
+      setState(() => _isLoading = false);
     }
   }
 

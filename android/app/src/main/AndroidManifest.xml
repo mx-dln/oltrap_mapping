@@ -7,11 +7,6 @@
     <!-- Camera feature declaration -->
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-    <!-- Storage permissions for export/import -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" 
-        android:minSdkVersion="30" />
     
     <application
         android:label="OLTrap Locator V2"

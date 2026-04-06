@@ -83,7 +83,6 @@ class OLTrap {
       try {
         return DateTime.parse(timestamp);
       } catch (e) {
-        // If string parsing fails, try parsing as int
         final intValue = int.tryParse(timestamp) ?? 0;
         return DateTime.fromMillisecondsSinceEpoch(intValue);
       }
@@ -96,8 +95,6 @@ class OLTrap {
     if (timestamp is double) {
       return DateTime.fromMillisecondsSinceEpoch(timestamp.toInt());
     }
-    
-    // Fallback
     return DateTime.now();
   }
 
