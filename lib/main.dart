@@ -4,7 +4,7 @@ import 'models/oltrap.dart';
 import 'screens/map_screen.dart';
 import 'screens/location_history_screen.dart';
 import 'screens/settings_screen.dart';
-import 'services/database_helper.dart';
+import 'services/supabase_database_helper.dart' as supabase_helper;
 import 'theme/neumorphism_theme.dart';
 
 void main() {
@@ -88,7 +88,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _loadOLTraps() async {
     try {
       print('Loading OLTraps...');
-      final oltraps = await DatabaseHelper.instance.getAllOLTraps();
+      // Initialize Supabase first
+      await supabase_helper.DatabaseHelper.instance.initializeDatabase();
+      final oltraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
       setState(() {
         _oltraps = oltraps;
         _isLoading = false;
@@ -114,7 +116,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         return;
       }
       
-      await DatabaseHelper.instance.insertOLTrap(trap);
+      await supabase_helper.DatabaseHelper.instance.insertOLTrap(trap);
       _loadOLTraps();
     } catch (e) {
       print('Error saving OLTrap: $e');

@@ -4,7 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/oltrap.dart';
-import '../services/database_helper.dart';
+import '../services/supabase_database_helper.dart' as supabase_helper;
 
 class QRScannerScreen extends StatefulWidget {
   final String? locationName;
@@ -37,12 +37,12 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Future<void> _loadScannedOLTraps() async {
     try {
       if (widget.locationName != null) {
-        final oltraps = await DatabaseHelper.instance.getOLTrapsByLocation(widget.locationName!);
+        final oltraps = await supabase_helper.DatabaseHelper.instance.getOLTrapsByLocation(widget.locationName!);
         setState(() {
           _scannedOLTraps = oltraps;
         });
       } else {
-        final oltraps = await DatabaseHelper.instance.getAllOLTraps();
+        final oltraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
         setState(() {
           _scannedOLTraps = oltraps;
         });
@@ -177,7 +177,8 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   Future<void> _processQRCode(String qrData) async {
     try {
       // Check if QR code already exists
-      final exists = await DatabaseHelper.instance.qrCodeExists(qrData);
+      final oltraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
+      final exists = oltraps.any((trap) => trap.qrCodeData == qrData);
       if (exists) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -203,7 +204,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       );
 
       // Save directly to database
-      await DatabaseHelper.instance.insertOLTrap(oltrap);
+      await supabase_helper.DatabaseHelper.instance.insertOLTrap(oltrap);
       
       // Refresh the list
       await _loadScannedOLTraps();
@@ -713,7 +714,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.of(context).pop();
-              await DatabaseHelper.instance.deleteOLTrap(oltrap.id);
+              await supabase_helper.DatabaseHelper.instance.deleteOLTrap(oltrap.id);
               await _loadScannedOLTraps();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(

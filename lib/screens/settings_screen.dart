@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite/sqflite.dart';
-import '../services/database_helper.dart';
+import '../services/supabase_database_helper.dart' as supabase_helper;
 import '../models/oltrap.dart';
 import '../theme/neumorphism_theme.dart';
 
@@ -74,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       
       // Get all OLTraps to show count in message
-      final allTraps = await DatabaseHelper.instance.getAllOLTraps();
+      final allTraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
       
       // Generate timestamped filename with version
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -400,11 +400,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _isLoading = true);
         
         // Get current trap count for feedback
-        final allTraps = await DatabaseHelper.instance.getAllOLTraps();
+        final allTraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
         final trapCount = allTraps.length;
         
         // Clear all data
-        await DatabaseHelper.instance.clearAllOLTraps();
+        await supabase_helper.DatabaseHelper.instance.clearAllOLTraps();
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -456,7 +456,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
         
         // Get current trap count before import
-        final currentTraps = await DatabaseHelper.instance.getAllOLTraps();
+        final currentTraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
         final currentCount = currentTraps.length;
         
         // Read and parse imported data
@@ -498,13 +498,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await tempDbFile.delete();
         
         // Reopen main database
-        await DatabaseHelper.instance.database;
+        await supabase_helper.DatabaseHelper.instance.initializeDatabase();
         
         // Merge new traps with existing data
-        await DatabaseHelper.instance.mergeOLTraps(importedTraps);
+        await supabase_helper.DatabaseHelper.instance.mergeOLTraps(importedTraps);
         
         // Get final trap count
-        final finalTraps = await DatabaseHelper.instance.getAllOLTraps();
+        final finalTraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
         final finalCount = finalTraps.length;
         final newCount = finalCount - currentCount;
         

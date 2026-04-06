@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/oltrap.dart';
-import '../services/database_helper.dart';
+import '../services/supabase_database_helper.dart' as supabase_helper;
 import '../theme/neumorphism_theme.dart';
 
 class LocationHistoryScreen extends StatefulWidget {
@@ -22,7 +22,7 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
 
   Future<void> _loadData() async {
     try {
-      final oltraps = await DatabaseHelper.instance.getAllOLTraps();
+      final oltraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
 
       final Map<String, List<OLTrap>> grouped = {};
       for (final oltrap in oltraps) {

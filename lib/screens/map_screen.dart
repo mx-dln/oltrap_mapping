@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import '../models/oltrap.dart';
-import '../services/database_helper.dart';
+import '../services/supabase_database_helper.dart' as supabase_helper;
 import 'location_selection_screen.dart';
 import 'search_qr_scanner_screen.dart';
 
@@ -1368,7 +1368,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       print('New status to set: $newStatus'); // Debug
       
       final updatedTrap = trap.copyWith(status: newStatus);
-      await DatabaseHelper.instance.updateOLTrap(updatedTrap);
+      await supabase_helper.DatabaseHelper.instance.updateOLTrap(updatedTrap);
       
       setState(() {
         _selectedTrap = null;
