@@ -145,6 +145,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _refreshOLTraps() async {
+    print('MapScreen: Starting refresh...');
     setState(() {
       _isRefreshing = true;
     });
@@ -152,14 +153,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     try {
       // Trigger main screen to reload data
       if (mounted) {
+        print('MapScreen: Triggering main screen refresh...');
         widget.onTrapAdded(OLTrap(
           id: 'refresh_${DateTime.now().millisecondsSinceEpoch}',
           qrCodeData: 'refresh',
           location: const LatLng(0, 0),
           timestamp: DateTime.now(),
         ));
+        print('MapScreen: Refresh trigger sent to main screen');
       }
     } catch (e) {
+      print('MapScreen: Error during refresh: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error refreshing: $e')),
@@ -170,6 +174,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         setState(() {
           _isRefreshing = false;
         });
+        print('MapScreen: Refresh completed');
       }
     }
   }

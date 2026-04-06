@@ -120,12 +120,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       
       // If this is a refresh trigger, just reload the data
       if (trap.qrCodeData == 'refresh') {
-        _loadOLTraps();
+        print('Refresh trigger detected, reloading data...');
+        await _loadOLTraps();
+        print('Data reload completed');
         return;
       }
       
+      print('Inserting new OLTrap to database...');
       await supabase_helper.DatabaseHelper.instance.insertOLTrap(trap);
-      _loadOLTraps();
+      print('OLTrap inserted, reloading data...');
+      await _loadOLTraps();
+      print('Data reload after insert completed');
     } catch (e) {
       print('Error saving OLTrap: $e');
     }
