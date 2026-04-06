@@ -136,6 +136,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
+  Widget _getCurrentWidget() {
+    switch (_currentIndex) {
+      case 0:
+        return MapScreen(
+          oltraps: _oltraps,
+          onTrapAdded: _addTrap,
+        );
+      case 1:
+        return const LocationHistoryScreen();
+      case 2:
+        return const QRScannerScreen();
+      case 3:
+        return SettingsScreen();
+      default:
+        return MapScreen(
+          oltraps: _oltraps,
+          onTrapAdded: _addTrap,
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -159,17 +180,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         return await _showExitConfirmation();
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: [
-            MapScreen(
-              oltraps: _oltraps,
-              onTrapAdded: _addTrap,
-            ),
-            const LocationHistoryScreen(),
-            const SettingsScreen(),
-          ],
-        ),
+        body: _getCurrentWidget(),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
             color: Colors.white,
