@@ -91,11 +91,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Initialize Supabase first
       await supabase_helper.DatabaseHelper.instance.initializeDatabase();
       final oltraps = await supabase_helper.DatabaseHelper.instance.getAllOLTraps();
+      print('Fetched ${oltraps.length} OLTraps from Supabase');
+      
+      // Print details of each trap for debugging
+      for (int i = 0; i < oltraps.length; i++) {
+        final trap = oltraps[i];
+        print('  Trap $i: ${trap.qrCodeData} at (${trap.location.latitude}, ${trap.location.longitude}) - ${trap.locationName ?? 'No location'}');
+      }
+      
       setState(() {
         _oltraps = oltraps;
         _isLoading = false;
       });
-      print('Loaded ${oltraps.length} OLTraps');
+      print('Loaded ${oltraps.length} OLTraps into UI state');
     } catch (e, stackTrace) {
       print('Error loading OLTraps: $e');
       print('Stack trace: $stackTrace');

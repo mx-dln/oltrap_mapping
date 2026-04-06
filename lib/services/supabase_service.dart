@@ -14,9 +14,10 @@ class SupabaseService {
     await Supabase.initialize(
       url: 'https://glcgsvyuxfxojrpvqdku.supabase.co',
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsY2dzdnl1eGZ4b2pycHZxZGt1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0NDU2MzksImV4cCI6MjA5MTAyMTYzOX0.CymO45Ie0405AEyvDTgnYLNQVhXQeX91aCiZQRIl7PA',
-      debug: false,
+      debug: true,  // Enable debug mode for detailed logging
     );
     _supabase = Supabase.instance.client;
+    print('Supabase initialized successfully');
   }
 
   SupabaseClient get client => _supabase;
@@ -123,6 +124,13 @@ class SupabaseService {
 
   // Helper methods to convert between OLTrap and Supabase format
   Map<String, dynamic> _mapToSupabase(OLTrap oltrap) {
+    print('Mapping OLTrap to Supabase:');
+    print('  ID: ${oltrap.id}');
+    print('  QR Code: ${oltrap.qrCodeData}');
+    print('  Location: ${oltrap.location.latitude}, ${oltrap.location.longitude}');
+    print('  Location Name: ${oltrap.locationName}');
+    print('  Timestamp: ${oltrap.timestamp.millisecondsSinceEpoch}');
+    
     return {
       'id': oltrap.id,
       'qr_code_data': oltrap.qrCodeData,
@@ -139,6 +147,14 @@ class SupabaseService {
   }
 
   OLTrap _mapToOLTrap(Map<String, dynamic> map) {
+    print('Mapping Supabase data to OLTrap:');
+    print('  ID: ${map['id']}');
+    print('  QR Code: ${map['qr_code_data']}');
+    print('  Latitude: ${map['latitude']}');
+    print('  Longitude: ${map['longitude']}');
+    print('  Location Name: ${map['location_name']}');
+    print('  Timestamp: ${map['timestamp']}');
+    
     return OLTrap(
       id: map['id'] ?? '',
       qrCodeData: map['qr_code_data'] ?? '',
@@ -153,8 +169,8 @@ class SupabaseService {
       status: map.containsKey('status')
           ? OLTrapStatusExtension.fromJson(map['status'])
           : OLTrapStatus.deployed,
-      isMissing: _parseBool(map['is_missing']),
-      isDamaged: _parseBool(map['is_damaged']),
+      isMissing: map['is_missing'] ?? false,
+      isDamaged: map['is_damaged'] ?? false,
     );
   }
 
