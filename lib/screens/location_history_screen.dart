@@ -66,10 +66,13 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Location History'),
+        title: Text(
+          'Locations',
+          style: Theme.of(context).appBarTheme.titleTextStyle,
+        ),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
-        elevation: 2,
+        elevation: 0,
       ),
       backgroundColor: AppTheme.backgroundColor,
       body: _isLoading
@@ -117,15 +120,15 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 16),
-                    elevation: 6,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Container(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: Colors.grey.shade200,
+                          color: AppTheme.outlineColor,
                           width: 1,
                         ),
                       ),
@@ -146,7 +149,7 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
                                     color: AppTheme.primaryColor.withOpacity(
                                       0.1,
                                     ),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
                                     Icons.location_on,
@@ -177,7 +180,7 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
                                         decoration: BoxDecoration(
                                           color: AppTheme.primaryColor,
                                           borderRadius: BorderRadius.circular(
-                                            20,
+                                            8,
                                           ),
                                         ),
                                         child: Text(
@@ -263,7 +266,9 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
                             ),
                             const SizedBox(height: 12),
                             // Harvested details row
-                            if (oltraps.any((t) => t.status == OLTrapStatus.harvested))
+                            if (oltraps.any(
+                              (t) => t.status == OLTrapStatus.harvested,
+                            ))
                               Row(
                                 children: [
                                   Expanded(
@@ -465,10 +470,10 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
         ),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
-        elevation: 4,
+        elevation: 0,
         actions: [],
       ),
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: AppTheme.backgroundColor,
       body: Column(
         children: [
           // Statistics header
@@ -477,14 +482,8 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.outlineColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -523,7 +522,9 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                     ),
                   ],
                 ),
-                if (widget.oltraps.any((t) => t.status == OLTrapStatus.harvested))
+                if (widget.oltraps.any(
+                  (t) => t.status == OLTrapStatus.harvested,
+                ))
                   Column(
                     children: [
                       const SizedBox(height: 12),
@@ -585,14 +586,17 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                 final oltrap = widget.oltraps[index];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 3,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200, width: 1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.outlineColor,
+                        width: 1,
+                      ),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -736,12 +740,20 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
                                           color: Colors.red.shade50,
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.red.shade200),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.red.shade200,
+                                          ),
                                         ),
                                         child: Row(
                                           children: [
-                                            Icon(Icons.help_outline, color: Colors.red.shade600, size: 16),
+                                            Icon(
+                                              Icons.help_outline,
+                                              color: Colors.red.shade600,
+                                              size: 16,
+                                            ),
                                             const SizedBox(width: 6),
                                             Text(
                                               'Missing',
@@ -755,19 +767,28 @@ class _LocationDetailScreenState extends State<LocationDetailScreen> {
                                         ),
                                       ),
                                     ),
-                                  if (oltrap.isMissing && oltrap.isDamaged) const SizedBox(width: 8),
+                                  if (oltrap.isMissing && oltrap.isDamaged)
+                                    const SizedBox(width: 8),
                                   if (oltrap.isDamaged)
                                     Expanded(
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
                                           color: Colors.brown.shade50,
-                                          borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.brown.shade200),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.brown.shade200,
+                                          ),
                                         ),
                                         child: Row(
                                           children: [
-                                            Icon(Icons.warning, color: Colors.brown.shade600, size: 16),
+                                            Icon(
+                                              Icons.warning,
+                                              color: Colors.brown.shade600,
+                                              size: 16,
+                                            ),
                                             const SizedBox(width: 6),
                                             Text(
                                               'Damaged',

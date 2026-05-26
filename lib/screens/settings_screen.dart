@@ -1,11 +1,11 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sqflite/sqflite.dart';
 import '../services/database_helper.dart';
 import '../models/oltrap.dart';
 import '../theme/neumorphism_theme.dart';
@@ -27,16 +27,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // For Android 11+, we need MANAGE_EXTERNAL_STORAGE for public Downloads access
         await Permission.storage.request();
         await Permission.manageExternalStorage.request();
-        
+
         // Check if permissions are granted
         var storageStatus = await Permission.storage.status;
         var manageStorageStatus = await Permission.manageExternalStorage.status;
-        
+
         if (!storageStatus.isGranted && !manageStorageStatus.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('⚠️ Storage permissions required for Downloads folder access'),
+                content: Text(
+                  '⚠️ Storage permissions required for Downloads folder access',
+                ),
                 backgroundColor: Colors.orange,
                 duration: Duration(seconds: 3),
               ),
@@ -52,49 +54,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _exportDatabase() async {
     try {
       setState(() => _isLoading = true);
-      
+
       // Request storage permissions first
       await _requestStoragePermissions();
-      
-      // Get database path
-      final dbPath = path.join(await getDatabasesPath(), 'oltrap_database.db');
-      final dbFile = File(dbPath);
-      
-      // Check if database file exists
-      if (!await dbFile.exists()) {
+
+      // Get all OLTraps from Supabase
+      final allTraps = await DatabaseHelper.instance.getAllOLTraps();
+
+      if (allTraps.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No database file found'),
+              content: Text('No data to export'),
               backgroundColor: Colors.orange,
             ),
           );
         }
         return;
       }
-      
-      // Get all OLTraps to show count in message
-      final allTraps = await DatabaseHelper.instance.getAllOLTraps();
-      
-      // Generate timestamped filename with version
+
+      // Build JSON payload
+      final exportData = {
+        'version': '1.1.0',
+        'exported_at': DateTime.now().toIso8601String(),
+        'count': allTraps.length,
+        'traps': allTraps.map((t) => t.toJson()).toList(),
+      };
+      final jsonString = const JsonEncoder.withIndent('  ').convert(exportData);
+
+      // Generate timestamped filename
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final version = '1.1.0'; // Match app version
-      final fileName = 'oltrap_database_v${version}_$timestamp.db';
-      
+      final version = '1.1.0';
+      final fileName = 'oltrap_export_v${version}_$timestamp.json';
+
       bool exportSuccessful = false;
       String? exportPath;
       String exportMethod = '';
-      
-      // Method 1: Try public Downloads directory using Environment
+
+      // Method 1: Try public Downloads directory
       try {
         if (Platform.isAndroid) {
-          // Try to access public Downloads directory directly
           final downloadsPath = '/storage/emulated/0/Download';
           final downloadsDir = Directory(downloadsPath);
-          
           if (await downloadsDir.exists()) {
             exportPath = path.join(downloadsPath, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
+            await _writeJsonToPath(jsonString, exportPath);
             exportSuccessful = true;
             exportMethod = 'Public Downloads folder';
           }
@@ -102,14 +106,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       } catch (e) {
         print('Public Downloads directory failed: $e');
       }
-      
-      // Method 2: Try getDownloadsDirectory() as fallback
+
+      // Method 2: Try getDownloadsDirectory()
       if (!exportSuccessful) {
         try {
           final downloadsDir = await getDownloadsDirectory();
-          if (downloadsDir != null && !downloadsDir.path.contains('Android/data')) {
+          if (downloadsDir != null &&
+              !downloadsDir.path.contains('Android/data')) {
             exportPath = path.join(downloadsDir.path, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
+            await _writeJsonToPath(jsonString, exportPath);
             exportSuccessful = true;
             exportMethod = 'Downloads folder';
           }
@@ -117,20 +122,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           print('Downloads directory failed: $e');
         }
       }
-      
-      // Method 3: Try using external storage Downloads (Android 9 and below)
+
+      // Method 3: Try external storage Downloads
       if (!exportSuccessful) {
         try {
           final externalDir = await getExternalStorageDirectory();
           if (externalDir != null) {
-            // Navigate to public Downloads from external storage path
             final basePath = externalDir.path.split('Android')[0];
             final downloadsPath = path.join(basePath, 'Download');
             final downloadsDir = Directory(downloadsPath);
-            
             if (await downloadsDir.exists()) {
               exportPath = path.join(downloadsPath, fileName);
-              await _copyDatabaseToPath(dbFile, exportPath);
+              await _writeJsonToPath(jsonString, exportPath);
               exportSuccessful = true;
               exportMethod = 'External Downloads folder';
             }
@@ -139,17 +142,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           print('External Downloads directory failed: $e');
         }
       }
-      
-      // Method 4: Try directory picker (user choice)
+
+      // Method 4: Try directory picker
       if (!exportSuccessful) {
         try {
-          String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
-            dialogTitle: 'Select folder to export OLTrap Database',
-          );
-          
+          String? selectedDirectory = await FilePicker.platform
+              .getDirectoryPath(
+                dialogTitle: 'Select folder to export OLTrap data',
+              );
           if (selectedDirectory != null) {
             exportPath = path.join(selectedDirectory, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
+            await _writeJsonToPath(jsonString, exportPath);
             exportSuccessful = true;
             exportMethod = 'Selected folder';
           }
@@ -157,19 +160,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           print('Directory picker failed: $e');
         }
       }
-      
-      // Method 5: Try using external storage OLTrap folder
+
+      // Method 5: Try external storage OLTrap folder
       if (!exportSuccessful) {
         try {
           final externalDir = await getExternalStorageDirectory();
           if (externalDir != null) {
-            // Try to create a folder in external storage
             final oltrapDir = Directory(path.join(externalDir.path, 'OLTrap'));
             if (!await oltrapDir.exists()) {
               await oltrapDir.create(recursive: true);
             }
             exportPath = path.join(oltrapDir.path, fileName);
-            await _copyDatabaseToPath(dbFile, exportPath);
+            await _writeJsonToPath(jsonString, exportPath);
             exportSuccessful = true;
             exportMethod = 'OLTrap folder';
           }
@@ -177,33 +179,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
           print('External storage failed: $e');
         }
       }
-      
-      // Method 6: Try app documents directory (last resort)
+
+      // Method 6: Try app documents directory
       if (!exportSuccessful) {
         try {
           final appDir = await getApplicationDocumentsDirectory();
           exportPath = path.join(appDir.path, fileName);
-          await _copyDatabaseToPath(dbFile, exportPath);
+          await _writeJsonToPath(jsonString, exportPath);
           exportSuccessful = true;
           exportMethod = 'App documents';
         } catch (e) {
           print('App documents directory failed: $e');
         }
       }
-      
-      // Method 7: Share the file directly if all else fails
+
+      // Method 7: Share via dialog
       if (!exportSuccessful) {
         try {
           final tempDir = await getTemporaryDirectory();
           final tempFile = File(path.join(tempDir.path, fileName));
-          await dbFile.copy(tempFile.path);
-          
+          await tempFile.writeAsString(jsonString);
+
           await Share.shareXFiles(
             [XFile(tempFile.path, name: fileName)],
-            subject: 'OLTrap Database Export',
-            text: 'Exported OLTrap database with ${allTraps.length} traps',
+            subject: 'OLTrap Data Export',
+            text: 'Exported ${allTraps.length} OLTraps',
           );
-          
+
           exportSuccessful = true;
           exportMethod = 'Share dialog';
           exportPath = tempFile.path;
@@ -211,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           print('Share method failed: $e');
         }
       }
-      
+
       if (mounted) {
         if (exportSuccessful && exportPath != null) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -220,26 +222,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('✅ Database exported successfully!'),
+                  const Text('✅ Data exported successfully!'),
                   Text('📁 ${allTraps.length} traps saved'),
                   Text('📍 Location: $exportMethod'),
                 ],
               ),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 5),
-              action: exportMethod != 'Share dialog' ? SnackBarAction(
-                label: 'View',
-                textColor: Colors.white,
-                onPressed: () {
-                  _showExportLocation(exportPath!);
-                },
-              ) : null,
+              action: exportMethod != 'Share dialog'
+                  ? SnackBarAction(
+                      label: 'View',
+                      textColor: Colors.white,
+                      onPressed: () {
+                        _showExportLocation(exportPath!);
+                      },
+                    )
+                  : null,
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('❌ Export failed: Unable to access storage on this device'),
+              content: Text(
+                '❌ Export failed: Unable to access storage on this device',
+              ),
               backgroundColor: Colors.red,
               duration: Duration(seconds: 5),
             ),
@@ -250,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error exporting database: $e'),
+            content: Text('Error exporting data: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -263,17 +269,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _copyDatabaseToPath(File sourceFile, String targetPath) async {
+  Future<void> _writeJsonToPath(String jsonString, String targetPath) async {
     final targetFile = File(targetPath);
-    
-    // Ensure directory exists
     final directory = targetFile.parent;
     if (!await directory.exists()) {
       await directory.create(recursive: true);
     }
-    
-    // Copy file
-    await sourceFile.copy(targetPath);
+    await targetFile.writeAsString(jsonString);
   }
 
   Future<void> _showExportLocation(String filePath) async {
@@ -290,11 +292,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Database exported to:'),
+                  const Text('Data exported to:'),
                   const SizedBox(height: 8),
                   SelectableText(
                     filePath,
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
                   ),
                 ],
               ),
@@ -324,10 +329,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: 12),
             const Text(
               'Clear All Data',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -349,7 +351,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.red.shade700, size: 20),
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.red.shade700,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -370,10 +376,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(
               'Cancel',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 14,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
           ),
           ElevatedButton(
@@ -385,10 +388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: const Text(
               'Clear All',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -398,18 +398,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed == true) {
       try {
         setState(() => _isLoading = true);
-        
+
         // Get current trap count for feedback
         final allTraps = await DatabaseHelper.instance.getAllOLTraps();
         final trapCount = allTraps.length;
-        
+
         // Clear all data
         await DatabaseHelper.instance.clearAllOLTraps();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Successfully deleted $trapCount OLTrap record${trapCount == 1 ? '' : 's'}'),
+              content: Text(
+                'Successfully deleted $trapCount OLTrap record${trapCount == 1 ? '' : 's'}',
+              ),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 3),
             ),
@@ -433,91 +435,98 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _importDatabase() async {
     try {
       setState(() => _isLoading = true);
-      
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-      );
-      
+
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+
       if (result != null && result.files.single.path != null) {
         final sourceFile = File(result.files.single.path!);
         final fileName = sourceFile.path.split('/').last.toLowerCase();
-        
+
         // Validate file extension
-        if (!fileName.endsWith('.db')) {
+        if (!fileName.endsWith('.json')) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Please select a valid database file (.db)'),
+                content: Text('Please select a valid export file (.json)'),
                 backgroundColor: Colors.orange,
               ),
             );
           }
           return;
         }
-        
-        // Get current trap count before import
-        final currentTraps = await DatabaseHelper.instance.getAllOLTraps();
-        final currentCount = currentTraps.length;
-        
-        // Read and parse imported data
-        final bytes = await sourceFile.readAsBytes();
-        final tempDbPath = path.join(await getDatabasesPath(), 'temp_import.db');
-        final tempDbFile = File(tempDbPath);
-        
-        // Copy imported database to temporary location
-        await tempDbFile.writeAsBytes(bytes);
-        
-        // Read traps from temporary database
-        final tempDb = await openDatabase(tempDbPath);
-        final tempMaps = await tempDb.query('oltraps');
-        
-        // Convert to OLTrap objects
-        final importedTraps = tempMaps.map((map) {
-          // Generate unique ID based on QR code if ID is missing or conflicts
-          final qrCode = map['qr_code_data']?.toString() ?? '';
-          final existingId = map['id']?.toString() ?? '';
-          final uniqueId = qrCode.isNotEmpty ? qrCode.hashCode.toString() : existingId;
-          
-          return OLTrap.fromJson({
-            'id': uniqueId,
-            'qr_code_data': qrCode,
-            'latitude': (map['latitude'] as num?)?.toDouble() ?? 0.0,
-            'longitude': (map['longitude'] as num?)?.toDouble() ?? 0.0,
-            'timestamp': map['timestamp']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-            'notes': map['notes']?.toString(),
-            'location_name': map['location_name']?.toString(),
-            'status': map['status']?.toString() ?? 'deployed',
-            'isMissing': map['isMissing']?.toString() ?? 'false',
-            'isDamaged': map['isDamaged']?.toString() ?? 'false',
-          });
-        }).toList();
-        
-        await tempDb.close();
-        
-        // Delete temporary database
-        await tempDbFile.delete();
-        
-        // Reopen main database
-        await DatabaseHelper.instance.database;
-        
-        // Merge new traps with existing data
-        await DatabaseHelper.instance.mergeOLTraps(importedTraps);
-        
-        // Get final trap count
-        final finalTraps = await DatabaseHelper.instance.getAllOLTraps();
-        final finalCount = finalTraps.length;
-        final newCount = finalCount - currentCount;
-        
+
+        // Read and parse JSON file
+        final jsonString = await sourceFile.readAsString();
+        final jsonData = jsonDecode(jsonString) as Map<String, dynamic>;
+
+        // Extract traps array (support both wrapped export and flat array)
+        final List<dynamic> trapMaps;
+        if (jsonData.containsKey('traps')) {
+          trapMaps = jsonData['traps'] as List<dynamic>;
+        } else if (jsonData.containsKey('oltraps')) {
+          trapMaps = jsonData['oltraps'] as List<dynamic>;
+        } else {
+          trapMaps = [jsonData];
+        }
+
+        // Get existing QR codes to check for duplicates
+        final existingTraps = await DatabaseHelper.instance.getAllOLTraps();
+        final existingQrCodes = existingTraps.map((t) => t.qrCodeData).toSet();
+
+        final List<OLTrap> newTraps = [];
+        final List<String> duplicateQrCodes = [];
+
+        for (final map in trapMaps) {
+          final data = map as Map<String, dynamic>;
+          final qrCode = data['qr_code_data']?.toString() ?? '';
+
+          if (qrCode.isEmpty) continue;
+
+          if (existingQrCodes.contains(qrCode)) {
+            duplicateQrCodes.add(qrCode);
+            continue;
+          }
+
+          final uniqueId = qrCode.hashCode.toString();
+
+          newTraps.add(
+            OLTrap.fromJson({
+              'id': uniqueId,
+              'qr_code_data': qrCode,
+              'latitude': (data['latitude'] as num?)?.toDouble() ?? 0.0,
+              'longitude': (data['longitude'] as num?)?.toDouble() ?? 0.0,
+              'timestamp': DateTime.now().toIso8601String(),
+              'notes': data['notes']?.toString(),
+              'location_name': data['location_name']?.toString(),
+              'status': data['status']?.toString() ?? 'deployed',
+              'isMissing': data['isMissing']?.toString() ?? 'false',
+              'isDamaged': data['isDamaged']?.toString() ?? 'false',
+            }),
+          );
+        }
+
+        if (newTraps.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Data already exists'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
+
+        // Insert new traps via Supabase
+        await DatabaseHelper.instance.mergeOLTraps(newTraps);
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                newCount > 0 
-                    ? 'Successfully imported $newCount new OLTrap record${newCount == 1 ? '' : 's'} (Total: $finalCount)'
-                    : 'Import complete - no new records found (Total: $finalCount)'
+                'Successfully imported ${newTraps.length} OLTrap record${newTraps.length == 1 ? '' : 's'}',
               ),
-              backgroundColor: newCount > 0 ? Colors.green : Colors.blue,
-              duration: const Duration(seconds: 4),
+              backgroundColor: Colors.green,
             ),
           );
         }
@@ -526,7 +535,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error importing database: $e'),
+            content: Text('Error importing data: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -541,7 +550,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Settings'),
+            Text(
+              'Data and app controls',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -562,18 +581,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'OLTrap Locator',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Keep records portable, backed up, and clean.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   // Data Management Section
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.outlineColor),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -620,16 +664,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                               SizedBox(height: 2),
                               Text(
-                                '📁 Direct download to device storage',
+                                'Direct download to device storage',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.green,
+                                  color: AppTheme.primaryColor,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                          ),
                           onTap: _exportDatabase,
                         ),
                         const Divider(height: 1),
@@ -658,7 +705,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'Import OLTrap data from a file',
                             style: TextStyle(fontSize: 14),
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                          ),
                           onTap: _importDatabase,
                         ),
                         const Divider(height: 1),
@@ -688,27 +738,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             'Delete all OLTrap records permanently',
                             style: TextStyle(fontSize: 14),
                           ),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                          trailing: const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 16,
+                          ),
                           onTap: _clearAllData,
                         ),
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // App Info Section
                   Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.outlineColor),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
